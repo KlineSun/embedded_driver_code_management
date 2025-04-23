@@ -106,7 +106,20 @@ struct file_handle {
 
 ### 4、关键结构关系
 
-![image-20250423211626135](C:\Users\Jianyuan Sun\AppData\Roaming\Typora\typora-user-images\image-20250423211626135.png)
+![image-20250423211626135](E:\embedded_learning\embedded_driver_code_management\src\00_hello_drv\image-20250423211626135.png)
+
+
+
+## 二、驱动程序编写流程
+
+- 确定主设备号，也可以让内核分配(注册时传入0)：
+  如果register_chrdev传入的主设备号为0，则在__register_chrdev_region中会分配主设备号；
+- 定义驱动自己的file_operations结构体；
+- 实现对应的 drv_open/drv_read/drv_write 等函数，填入 file_operations 结构体；
+- 把 file_operations 结构体告诉内核：register_chrdev
+- 谁来注册驱动程序啊？得有一个入口函数：安装驱动程序时，就会去调用这个入口函数；
+- 有入口函数就应该有出口函数：卸载驱动程序时，出口函数调用unregister_chrdev;
+- 其他完善：提供设备信息，自动创建设备节点：class_create,  device_create
 
 
 
