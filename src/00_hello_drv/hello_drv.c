@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "common_util.h"
 
 #define MAT_OPTION_LENGTH 128
 #define MAT_CACHE_BUFFER_LENGTH 256
