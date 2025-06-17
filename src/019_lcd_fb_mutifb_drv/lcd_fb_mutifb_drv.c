@@ -25,11 +25,38 @@
 #include <linux/bits.h>
 #include <video/of_display_timing.h>
 #include <video/display_timing.h> 
-#include "lcd_fb_ltdc_drv.h"
+#include "lcd_fb_mutifb_drv.h"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Kline <kline_code@example,com>");
 MODULE_DESCRIPTION("Test for button bus driver");
+
+/*************************多重fb优化流程*****************************/
+/**
+ * 1. 注册n个fb容量的内存，用于显存
+ *  使用接口：dma_alloc_writecombine
+ *  单个fb大小：xres * yres * bpp / 8
+ *  对应fb参数：fb->fix.smem_len = fb->fix.line_length * fb->var.yres_virtual;
+ * 2. 在fb_info中设置
+ *  fb->fb.var.xres		= xres;
+    fb->fb.var.yres		= yres;
+    fb->fb.var.xres_virtual	= xres;
+    fb->fb.var.yres_virtual	= yres * n;
+    fb->fb.fix.smem_len = n * (xres * yres * bpp / 8);
+ * 
+ * 3. 在APP中，通过获得var和fix参数，计算获得驱动提供的fb数量n：
+ *  n = fb->fb.fix.smem_len / (fb->fb.var.xres * fb->fb.var.yres * fb->fb.var.bits_per_pixel / 8);
+ * 
+ * 4. APP中填充好一帧fb数据
+ * 
+ * 5. 通知驱动切换FB，使用:
+ *  ioctrl(fd, FBIOPAN_DISPLAY, data);
+ * 
+ * 6. 驱动中，会经过ioctrl调用到fb_ops中的fb_pan_display函数，在该函数中，完成fb的切换，重新设置LTDC寄存器中设置的fb基地址
+ * 
+ */
+
+
 
 static struct fb_info *g_fbinfo = NULL;
 static unsigned int pseudo_palette[16] = {0};
@@ -131,7 +158,7 @@ void stm32_ltdc_regs_init(struct fb_info *fbinfo)
         return;
     }
 
-    // 设置hsync_len和vsync_len 
+    // 设置hsync_len和vsync_len
     // 要求格式：HSYNC width - 1，VSYNC height - 1
     DEBUG_LOG("Setting hsync_len!");
     ltdc_regs->LTDC_SSCR = ((dt->hsync_len.typ) << 16) | (dt->vsync_len.typ);
