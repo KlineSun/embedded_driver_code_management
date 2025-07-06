@@ -14,6 +14,7 @@
 #include <linux/of_irq.h>
 #include <linux/slab.h>
 #include <linux/input.h>
+#include <linux/cdev.h>
 #include <linux/gpio/driver.h>
 #include <linux/gpio/consumer.h>
 #include "virt_gpioctrl_led_drv.h"
@@ -25,10 +26,11 @@ MODULE_DESCRIPTION("Test for virtual gpio controller");
 struct virt_led_drv {
     const char *label;
     struct device *dev;
-    int major;
+    dev_t devno;
     struct class *cls;
     struct device *chrdev; // 根据
     struct gpio_desc *gpiod;
+    struct cdev		cdev;
 };
 
 static struct virt_led_drv *g_virt_led = NULL;
@@ -36,7 +38,7 @@ static struct virt_led_drv *g_virt_led = NULL;
 static int virt_led_drv_open(struct inode *inode, struct file *file)
 {
     int ret = 0;
-    struct virt_led_drv *virt_led = file->private_data;
+    struct virt_led_drv *virt_led = container_of(inode->i_cdev, struct virt_led_drv, cdev);
     int minor = iminor(inode);
 
     DEBUG_LOG("Enter with minor: %d", minor);
@@ -45,6 +47,7 @@ static int virt_led_drv_open(struct inode *inode, struct file *file)
         ret = gpiod_direction_output(g_virt_led->gpiod, 1);
     } else {
         DEBUG_LOG("Get virtual led success!");
+        file->private_data = virt_led;
         ret = gpiod_direction_output(virt_led->gpiod, 1);
     }
     return ret;
@@ -158,11 +161,18 @@ int virt_led_probe(struct platform_device *pdev)
     DEBUG_LOG("Get node name: %s, label: %s", np->name, label);
 
     // 字符设备驱动程序注册
-    g_virt_led->major = register_chrdev(0, "virt_led_drv", &virt_led_drv_fop);
-    if (g_virt_led->major <= 0) {
-        DEBUG_LOG("Register chrdev failed!");
+    if (alloc_chrdev_region(&g_virt_led->devno, 0, 1, "virt_led_drv")) {
+        DEBUG_LOG("Register chrdev region failed!");
         return -EINVAL;
     }
+
+    cdev_init(&g_virt_led->cdev, &virt_led_drv_fop);
+    g_virt_led->cdev.owner = THIS_MODULE;
+
+	if (cdev_add(&g_virt_led->cdev, g_virt_led->devno, 1)) {
+        DEBUG_LOG("cdev_add error!");
+		return -EBUSY;
+	}
 
     g_virt_led->cls = class_create(THIS_MODULE, "virt_led");
     if (!g_virt_led->cls) {
@@ -172,7 +182,7 @@ int virt_led_probe(struct platform_device *pdev)
 
     g_virt_led->chrdev = device_create(g_virt_led->cls,
                             dev, 
-                            MKDEV(g_virt_led->major, 0),
+                            g_virt_led->devno,
                             g_virt_led, 
                             "virt_led");
     if (!g_virt_led->chrdev) {
@@ -189,11 +199,12 @@ int virt_led_remove(struct platform_device *pdev)
 {
     DEBUG_LOG("Enter!");
 
-    device_destroy(g_virt_led->cls, MKDEV(g_virt_led->major, 0));
+    device_destroy(g_virt_led->cls, g_virt_led->devno);
 
     class_destroy(g_virt_led->cls);
 
-    unregister_chrdev(g_virt_led->major, "virt_led_drv");
+    // include\linux\kdev_t.h
+    unregister_chrdev(MAJOR(g_virt_led->devno), "virt_led_drv");
 
     DEBUG_LOG("Remove end!");
     return 0;
