@@ -663,6 +663,8 @@ int virt_pmx_gpio_request_enable(struct pinctrl_dev *pctldev,
     return 0;
 }
 
+static struct task_struct *g_task = NULL;
+
 static const struct pinmux_ops virt_pmx_ops = {
     .get_functions_count	= virt_pmx_get_funcs_cnt,
     .get_function_name	= virt_pmx_get_func_name,
